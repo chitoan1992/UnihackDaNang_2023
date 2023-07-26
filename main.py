@@ -4,7 +4,7 @@
 
 from langchain.document_loaders.text import TextLoader
 
-loader = TextLoader(file_path='./eco-recommendation.txt')
+loader = TextLoader(file_path="./eco-recommendation.txt")
 data = loader.load()
 
 # %%
@@ -15,9 +15,9 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 text_splitter = RecursiveCharacterTextSplitter(
     # Set a really small chunk size, just to show.
-    chunk_size = 500,
-    chunk_overlap  = 100,
-    length_function = len, 
+    chunk_size=500,
+    chunk_overlap=100,
+    length_function=len,
 )
 
 texts = text_splitter.split_documents(data)
@@ -27,6 +27,7 @@ texts = text_splitter.split_documents(data)
 # Convert Text Chunk to Embeddings
 
 from langchain.embeddings import HuggingFaceEmbeddings
+
 embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 # %%
@@ -36,9 +37,7 @@ from chromadb.config import Settings
 from langchain.vectorstores import Chroma
 
 CHROMA_SETTINGS = Settings(
-        chroma_db_impl='duckdb+parquet',
-        persist_directory='db',
-        anonymized_telemetry=False
+    chroma_db_impl="duckdb+parquet", persist_directory="db", anonymized_telemetry=False
 )
 
 db = Chroma.from_documents(texts, embeddings, client_settings=CHROMA_SETTINGS)
@@ -52,10 +51,7 @@ from langchain import PromptTemplate
 users_question = "I'm a student in University, what product I should use to save eco ?"
 
 # use our vector store to find similar text chunks
-results = db.similarity_search(
-    query=users_question,
-    k=2
-)
+results = db.similarity_search(query=users_question, k=2)
 
 # define the prompt template
 template = """
@@ -74,14 +70,16 @@ Question:
 {users_question} [/INST]
 """
 
-prompt = PromptTemplate(template=template, input_variables=["context", "users_question"])
+prompt = PromptTemplate(
+    template=template, input_variables=["context", "users_question"]
+)
 
 # fill the prompt template
-prompt_text = prompt.format(context = results, users_question = users_question)
+prompt_text = prompt.format(context=results, users_question=users_question)
 
 # %%
 
-# ask the defined LLM
+# ask the defined private LLM
 import sys
 import openai
 
@@ -91,11 +89,11 @@ openai.api_base = "http://127.0.0.1:1234/v1"
 chat_completion = openai.ChatCompletion.create(
     stream=True,
     temperature=0.7,
-            model="Llama-2-7b-chat-hf",
-            openai_api_base="http://localhost:1234/v1",
-            openai_api_key="sk-anything==",
-            messages=[{"role": "environmentalist",
-                    "content": prompt_text}])
+    model="Llama-2-7b-chat-hf",
+    openai_api_base="http://localhost:1234/v1",
+    openai_api_key="sk-anything==",
+    messages=[{"role": "environmentalist", "content": prompt_text}],
+)
 
 for token in chat_completion:
     content = token["choices"][0]["delta"].get("content")
@@ -103,3 +101,26 @@ for token in chat_completion:
         print(content, end="")
         sys.stdout.flush()
 
+# %%
+
+# ask the defined openrouter LLM
+import os
+import openai
+from dotenv import load_dotenv
+
+load_dotenv()
+
+model = "google/palm-2-chat-bison"
+openai.api_base = "https://openrouter.ai/api/v1"
+openai.api_key = os.environ.get("OPENAI_API_KEY")
+headers = {"HTTP-Referer": "https://localhost:3000/", "X-Title": "unihack"}
+
+response = openai.ChatCompletion.create(
+    model=model,  # Optional (user controls the default)
+    messages=[{"role": "environmentalist", "content": prompt_text}],
+    headers=headers,
+)
+reply = response.choices[0].message
+print(reply)
+
+# %%
